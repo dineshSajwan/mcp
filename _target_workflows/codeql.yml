@@ -1,0 +1,101 @@
+# ============================================================
+# CodeQL Advanced Security Analysis
+# ============================================================
+#
+# PURPOSE:
+#   Performs deep static analysis of source code using GitHub's
+#   CodeQL engine to automatically detect security vulnerabilities,
+#   logic errors, and code quality issues.
+#
+# WHAT IT SCANS:
+#   - Python source code in source/
+#   - GitHub Actions workflow files in .github/workflows/
+#
+# HOW TO VIEW RESULTS:
+#   Go to → Security tab → Code scanning alerts
+#
+# SCHEDULE:
+#   Runs automatically on every push and PR to main,
+#   plus a weekly scheduled scan every Wednesday at 08:20 UTC
+#   to catch newly published vulnerability definitions.
+#
+# PERMISSIONS:
+#   Requires "Read and write" Code scanning permissions.
+#   These are granted via the fine-grained permissions below.
+#   No additional secrets or tokens are required — uses GITHUB_TOKEN.
+#
+# DOCS:
+#   https://docs.github.com/en/code-security/code-scanning
+# ============================================================
+
+name: "CodeQL Advanced"
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    # Weekly scan every Wednesday at 08:20 UTC
+    # Offset from the hour to avoid GitHub Actions peak load times
+    - cron: "20 8 * * 3"
+
+# Restrict all jobs to least-privilege permissions by default.
+# Each job grants only what it specifically needs.
+permissions: {}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Required to upload results to the Security tab
+      security-events: write
+      # Required to fetch internal or private CodeQL query packs
+      packages: read
+      # Required to check out repository contents
+      contents: read
+      # Required for private repositories — harmless on public repos
+      actions: read
+
+    strategy:
+      # Don't cancel other language scans if one fails
+      fail-fast: false
+      matrix:
+        include:
+          # Scans GitHub Actions workflow YAML files for supply-chain
+          # and injection vulnerabilities (e.g. script injection via
+          # unquoted ${{ github.event.* }} expressions)
+          - language: actions
+            build-mode: none
+
+          # Scans Python source code in source/ for security issues
+          # such as SQL injection, path traversal, shell injection,
+          # insecure deserialization, and more.
+          - language: python
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # Initialize the CodeQL tools and select the query suite.
+      # The default queries cover the most important security issues.
+      # To enable additional quality checks, uncomment:
+      #   queries: security-extended,security-and-quality
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b2ff80ddacba59b60f4e0cf3b699baaea3230cd9 # v4.31.9
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      # For interpreted languages like Python, CodeQL does not need
+      # to compile the code. The "none" build-mode above handles this.
+      # If you ever add a compiled language (e.g. Java, C++), you
+      # would add build commands here when build-mode is "manual".
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@b2ff80ddacba59b60f4e0cf3b699baaea3230cd9 # v4.31.9
+        with:
+          # Groups results under a per-language category in the UI
+          category: "/language:${{ matrix.language }}"
